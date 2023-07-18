@@ -14,7 +14,7 @@ import { getFile } from './hub.js';
 import { env } from '../env.js';
 
 // Will be empty (or not used) if running in browser or web-worker
-import sharp from 'sharp';
+//import sharp from 'sharp';
 
 const BROWSER_ENV = typeof self !== 'undefined';
 
@@ -32,7 +32,7 @@ if (BROWSER_ENV) {
     loadImageFunction = self.createImageBitmap;
     ImageDataClass = self.ImageData;
 
-} else if (sharp) {
+} else if (false) {
     // Running in Node.js, electron, or other non-browser environment
 
     loadImageFunction = async (/**@type {sharp.Sharp}*/img) => {
@@ -133,11 +133,6 @@ export class RawImage {
 
             return new this(ctx.getImageData(0, 0, img.width, img.height).data, img.width, img.height, 4);
 
-        } else {
-            // Use sharp.js to read (and possible resize) the image.
-            let img = sharp(await blob.arrayBuffer());
-
-            return await loadImageFunction(img);
         }
     }
 
@@ -272,49 +267,6 @@ export class RawImage {
             // Convert back so that image has the same number of channels as before
             return resizedImage.convert(numChannels);
 
-        } else {
-            // Create sharp image from raw data, and resize
-            let img = sharp(this.data, {
-                raw: {
-                    width: this.width,
-                    height: this.height,
-                    channels: this.channels
-                }
-            });
-
-            switch (resampleMethod) {
-                case 'box':
-                case 'hamming':
-                    if (resampleMethod === 'box' || resampleMethod === 'hamming') {
-                        console.warn(`Resampling method ${resampleMethod} is not yet supported. Using bilinear instead.`);
-                        resampleMethod = 'bilinear';
-                    }
-
-                case 'nearest':
-                case 'bilinear':
-                case 'bicubic':
-                    // Perform resizing using affine transform. 
-                    // This matches how the python Pillow library does it.
-                    img = img.affine([width / this.width, 0, 0, height / this.height], {
-                        interpolator: resampleMethod
-                    });
-                    break;
-
-                case 'lanczos':
-                    // https://github.com/python-pillow/Pillow/discussions/5519
-                    // https://github.com/lovell/sharp/blob/main/docs/api-resize.md
-                    img = img.resize({
-                        width, height,
-                        fit: 'fill',
-                        kernel: 'lanczos3', // PIL Lanczos uses a kernel size of 3 
-                    });
-                    break;
-
-                default:
-                    throw new Error(`Resampling method ${resampleMethod} is not supported.`);
-            }
-
-            return await loadImageFunction(img);
         }
 
     }
@@ -357,15 +309,6 @@ export class RawImage {
             // Convert back so that image has the same number of channels as before
             return paddedImage.convert(numChannels);
 
-        } else {
-            let img = sharp(this.data, {
-                raw: {
-                    width: this.width,
-                    height: this.height,
-                    channels: this.channels
-                }
-            }).extend({ left, right, top, bottom });
-            return await loadImageFunction(img);
         }
     }
 
@@ -420,73 +363,6 @@ export class RawImage {
             // Convert back so that image has the same number of channels as before
             return resizedImage.convert(numChannels);
 
-        } else {
-            // Create sharp image from raw data
-            let img = sharp(this.data, {
-                raw: {
-                    width: this.width,
-                    height: this.height,
-                    channels: this.channels
-                }
-            });
-
-            if (width_offset >= 0 && height_offset >= 0) {
-                // Cropped image lies entirely within the original image
-                img = img.extract({
-                    left: Math.floor(width_offset),
-                    top: Math.floor(height_offset),
-                    width: crop_width,
-                    height: crop_height,
-                })
-            } else if (width_offset <= 0 && height_offset <= 0) {
-                // Cropped image lies entirely outside the original image,
-                // so we add padding
-                let top = Math.floor(-height_offset);
-                let left = Math.floor(-width_offset);
-                img = img.extend({
-                    top: top,
-                    left: left,
-
-                    // Ensures the resulting image has the desired dimensions
-                    right: crop_width - this.width - left,
-                    bottom: crop_height - this.height - top,
-                });
-            } else {
-                // Cropped image lies partially outside the original image.
-                // We first pad, then crop.
-
-                let y_padding = [0, 0];
-                let y_extract = 0;
-                if (height_offset < 0) {
-                    y_padding[0] = Math.floor(-height_offset);
-                    y_padding[1] = crop_height - this.height - y_padding[0];
-                } else {
-                    y_extract = Math.floor(height_offset);
-                }
-
-                let x_padding = [0, 0];
-                let x_extract = 0;
-                if (width_offset < 0) {
-                    x_padding[0] = Math.floor(-width_offset);
-                    x_padding[1] = crop_width - this.width - x_padding[0];
-                } else {
-                    x_extract = Math.floor(width_offset);
-                }
-
-                img = img.extend({
-                    top: y_padding[0],
-                    bottom: y_padding[1],
-                    left: x_padding[0],
-                    right: x_padding[1],
-                }).extract({
-                    left: x_extract,
-                    top: y_extract,
-                    width: crop_width,
-                    height: crop_height,
-                })
-            }
-
-            return await loadImageFunction(img);
         }
     }
 
